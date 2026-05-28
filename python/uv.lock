@@ -35,6 +35,7 @@ members = [
     "jumpstarter-driver-network",
     "jumpstarter-driver-noyito-relay",
     "jumpstarter-driver-opendal",
+    "jumpstarter-driver-openocd",
     "jumpstarter-driver-pi-pico",
     "jumpstarter-driver-power",
     "jumpstarter-driver-probe-rs",
@@ -2848,6 +2849,36 @@ requires-dist = [
 dev = [
     { name = "pytest", specifier = ">=8.3.2" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
+]
+
+[[package]]
+name = "jumpstarter-driver-openocd"
+source = { editable = "packages/jumpstarter-driver-openocd" }
+dependencies = [
+    { name = "anyio" },
+    { name = "click" },
+    { name = "jumpstarter" },
+    { name = "jumpstarter-driver-opendal" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = ">=4.10.0" },
+    { name = "click", specifier = ">=8.1.7.2" },
+    { name = "jumpstarter", editable = "packages/jumpstarter" },
+    { name = "jumpstarter-driver-opendal", editable = "packages/jumpstarter-driver-opendal" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.3" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
 ]
 
 [[package]]
