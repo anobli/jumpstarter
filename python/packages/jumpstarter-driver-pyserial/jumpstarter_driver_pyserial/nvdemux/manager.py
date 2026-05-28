@@ -294,9 +294,7 @@ class DemuxerManager:
     def _start_monitor(self):
         """Start the monitor thread."""
         self._shutdown.clear()
-        self._monitor_thread = threading.Thread(
-            target=self._monitor_loop, daemon=True, name="DemuxerManager-monitor"
-        )
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True, name="DemuxerManager-monitor")
         self._monitor_thread.start()
         logger.debug("Started demuxer monitor thread")
 

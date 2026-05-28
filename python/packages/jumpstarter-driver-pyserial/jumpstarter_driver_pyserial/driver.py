@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Optional, Union
 
+import anyio
 from anyio import (
     create_memory_object_stream,
     sleep,
@@ -26,6 +27,7 @@ LOOP = "loop://"
 @dataclass(kw_only=True)
 class ThrottledStream(ObjectStream):
     """Wrapper stream that adds CPS throttling to any ObjectStream."""
+
     stream: Union[ObjectSendStream[bytes], ObjectStream[bytes]]
     cps: Optional[float] = None
 
@@ -44,7 +46,7 @@ class ThrottledStream(ObjectStream):
 
         # Send data character by character with delay
         for i in range(len(item)):
-            char = item[i:i+1]
+            char = item[i : i + 1]
             await self.stream.send(char)
 
             # Add delay between characters (except for the last one)
@@ -106,6 +108,14 @@ class PySerial(Driver):
             super().__post_init__()
         if self.check_present and self.url != LOOP:
             serial_for_url(self.url, baudrate=self.baudrate)
+        # release()/acquire() coordination so an exporter-side process
+        # (typically a flasher driver) can take exclusive access to the tty.
+        self._released: bool = False
+        self._acquire_waiters: list[anyio.Event] = []
+        # Sync closers for the currently-open underlying transports/streams.
+        # release() invokes each one; the resulting EOF tears down the
+        # AsyncSerial/ThrottledStream wrappers and the export side cleanly.
+        self._active_closers: list = []
 
     @classmethod
     def client(cls) -> str:
@@ -165,31 +175,91 @@ class PySerial(Driver):
         finally:
             s.close()
 
+    @export
+    async def release(self):
+        """Close the underlying tty so another process on the exporter (typically
+        a flasher driver) can open it. Any active connect() streams see EOF;
+        new connect() calls block until acquire() is called.
+        """
+        if self._released:
+            return
+        self._released = True
+        self.logger.info("Releasing %s", self.url)
+        for closer in list(self._active_closers):
+            try:
+                closer()
+            except Exception:  # noqa: BLE001
+                self.logger.warning("release: closer raised", exc_info=True)
+
+    @export
+    async def acquire(self):
+        """Mark the port as available again. connect() callers blocked in
+        release() will be allowed to proceed.
+        """
+        if not self._released:
+            return
+        self._released = False
+        self.logger.info("Acquiring %s", self.url)
+        waiters, self._acquire_waiters = self._acquire_waiters, []
+        for w in waiters:
+            w.set()
+
     @exportstream
     @asynccontextmanager
     async def connect(self):
+        while self._released:
+            evt = anyio.Event()
+            self._acquire_waiters.append(evt)
+            try:
+                await evt.wait()
+            finally:
+                # Drop the event if we were cancelled while parked (client gone,
+                # lease ended) so _acquire_waiters doesn't accumulate stale
+                # events across reconnect cycles.
+                if evt in self._acquire_waiters:
+                    self._acquire_waiters.remove(evt)
+
         cps_info = f", cps: {self.cps}" if self.cps is not None else ""
         self.logger.info("Connecting to %s, baudrate: %d%s", self.url, self.baudrate, cps_info)
 
-        if self.url == LOOP:
+        if self.url != LOOP:
+            reader, writer = await open_serial_connection(url=self.url, baudrate=self.baudrate)
+            writer.transport.set_write_buffer_limits(high=4096, low=0)
+            self._maybe_disable_hupcl(getattr(writer.transport, "serial", None))
+            self._transport = writer.transport
+            closer = writer.transport.close
+            self._active_closers.append(closer)
+            try:
+                async with AsyncSerial(
+                    reader=StreamReaderWrapper(reader),
+                    writer=StreamWriterWrapper(writer),
+                    cps=self.cps,
+                ) as stream:
+                    yield stream
+                self.logger.info("Disconnected from %s", self.url)
+            finally:
+                self._transport = None
+                try:
+                    self._active_closers.remove(closer)
+                except ValueError:
+                    pass
+        else:
             tx, rx = create_memory_object_stream[bytes](32)  # type: ignore[call-overload]
             stapled_stream = StapledObjectStream(tx, rx)
-            async with ThrottledStream(stream=stapled_stream, cps=self.cps) as stream:
-                yield stream
-            return
+            closed = {"value": False}
 
-        reader, writer = await open_serial_connection(url=self.url, baudrate=self.baudrate)
-        writer.transport.set_write_buffer_limits(high=4096, low=0)
-        self._maybe_disable_hupcl(getattr(writer.transport, "serial", None))
-        self._transport = writer.transport
+            def close_loop():
+                if not closed["value"]:
+                    closed["value"] = True
+                    tx.close()
+                    rx.close()
 
-        try:
-            async with AsyncSerial(
-                reader=StreamReaderWrapper(reader),
-                writer=StreamWriterWrapper(writer),
-                cps=self.cps,
-            ) as stream:
-                yield stream
-        finally:
-            self._transport = None
-        self.logger.info("Disconnected from %s", self.url)
+            self._active_closers.append(close_loop)
+            try:
+                async with ThrottledStream(stream=stapled_stream, cps=self.cps) as stream:
+                    yield stream
+            finally:
+                try:
+                    self._active_closers.remove(close_loop)
+                except ValueError:
+                    pass

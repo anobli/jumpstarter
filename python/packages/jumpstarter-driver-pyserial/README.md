@@ -211,6 +211,29 @@ Notes:
 
 Exit with Ctrl+C.
 
+### pty
+
+Expose the remote serial port as a local PTY so tools that expect a real serial
+device (picocom, pyserial, etc.) can attach to it. Prints the slave device path
+(or the `--symlink`) and blocks until Ctrl+C.
+
+```bash
+# Allocate a PTY and create a stable symlink to it
+j serial pty --symlink /tmp/jmp-tty &
+
+# Attach any serial tool to the path
+picocom /tmp/jmp-tty
+```
+
+#### Options
+
+- `--symlink PATH`: Create a stable symlink to the allocated PTY slave path.
+- `--quiet`: Print only the slave path on stdout (suitable for capture).
+
+The slave path stays stable across `release()`/`acquire()` cycles on the
+exporter, so a brief take-over by a sibling driver (e.g. a flasher) appears as a
+pause rather than a disconnect.
+
 ## API Reference
 
 ```{eval-rst}
