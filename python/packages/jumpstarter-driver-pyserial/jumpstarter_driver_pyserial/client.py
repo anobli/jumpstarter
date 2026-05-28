@@ -1,4 +1,5 @@
 import sys
+import time
 from contextlib import contextmanager
 from typing import Optional
 
@@ -9,6 +10,7 @@ from jumpstarter_driver_network.adapters import PexpectAdapter
 from pexpect.fdpexpect import fdspawn
 
 from .console import Console
+from .pty_adapter import PtyAdapter
 from jumpstarter.client import DriverClient
 from jumpstarter.client.decorators import driver_click_group
 
@@ -39,6 +41,52 @@ class PySerialClient(DriverClient):
         """
         with PexpectAdapter(client=self) as adapter:
             yield adapter
+
+    @contextmanager
+    def pty(self, symlink_path: Optional[str] = None):
+        """
+        Expose the remote serial port as a local PTY.
+
+        Yields the slave PTY device path (e.g. ``/dev/pts/N``) suitable
+        for tools that expect a real serial device — Twister's
+        ``--device-serial-pty``, pyserial, picocom, etc. The slave path
+        stays stable across release()/acquire() cycles on the server side,
+        so a brief flasher take-over is seen as a pause rather than EOF.
+
+        Args:
+            symlink_path: Optional stable symlink to the slave path.
+
+        Yields:
+            str: The PTY slave device path.
+        """
+        with PtyAdapter(client=self, symlink_path=symlink_path) as slave_path:
+            yield slave_path
+
+    def release(self):
+        """Release the underlying tty so another exporter-side process
+        (typically a sibling flasher driver) can open it. Pairs with
+        :meth:`acquire`."""
+        self.call("release")
+
+    def acquire(self):
+        """Re-acquire the underlying tty previously released with
+        :meth:`release`."""
+        self.call("acquire")
+
+    @contextmanager
+    def released(self):
+        """Context manager that releases the tty on enter and re-acquires
+        it on exit — even if the body raises. Intended for runner code that
+        wraps a flash operation::
+
+            with client.console.released():
+                client.flasher.flash(artifact)
+        """
+        self.release()
+        try:
+            yield
+        finally:
+            self.acquire()
 
     async def _pipe_serial(
         self,
@@ -138,15 +186,67 @@ class PySerialClient(DriverClient):
             console = Console(serial_client=self)
             console.run()
 
+        @base.command(name="pty")
+        @click.option(
+            "--symlink",
+            type=click.Path(),
+            default=None,
+            help="Create a stable symlink to the allocated PTY slave path.",
+        )
+        @click.option(
+            "--quiet",
+            is_flag=True,
+            default=False,
+            help="Print only the slave path on stdout (suitable for capture).",
+        )
+        def pty_cmd(symlink, quiet):
+            """Expose the serial port as a local PTY.
+
+            Prints the slave PTY path (or the --symlink) on stdout and
+            blocks until Ctrl+C. Use with Twister:
+
+              j console pty --symlink /tmp/jmp-tty &
+              west twister --device-testing \\
+                           --device-serial-pty /tmp/jmp-tty ...
+            """
+            with self.pty(symlink_path=symlink) as slave_path:
+                exposed = symlink or slave_path
+                if quiet:
+                    click.echo(exposed)
+                else:
+                    click.echo(f"PTY ready: {exposed}", err=True)
+                    click.echo(exposed)
+                sys.stdout.flush()
+                try:
+                    while True:
+                        time.sleep(3600)
+                except KeyboardInterrupt:
+                    click.echo("\nStopped.", err=True)
+
+        @base.command()
+        def release():
+            """Release the remote tty so another exporter-side process can
+            open it (e.g. a flasher driver). Pairs with `j console acquire`."""
+            self.release()
+            click.echo("Released.", err=True)
+
+        @base.command()
+        def acquire():
+            """Re-acquire the remote tty previously released."""
+            self.acquire()
+            click.echo("Acquired.", err=True)
+
         @base.command()
         @click.option(
-            "-o", "--output",
+            "-o",
+            "--output",
             type=click.Path(),
             default=None,
             help="Output file path. If not specified, writes to stdout.",
         )
         @click.option(
-            "-i", "--input",
+            "-i",
+            "--input",
             "input_flag",
             is_flag=True,
             default=None,
@@ -159,7 +259,8 @@ class PySerialClient(DriverClient):
             help="Disable stdin to serial port, even if stdin is piped.",
         )
         @click.option(
-            "-a", "--append",
+            "-a",
+            "--append",
             is_flag=True,
             default=False,
             help="Append to output file instead of overwriting.",

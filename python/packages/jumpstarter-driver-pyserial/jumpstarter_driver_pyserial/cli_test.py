@@ -397,4 +397,3 @@ async def test_serial_to_output_receives_data_then_end_of_stream(pyserial_client
         with open("test.log", "rb") as f:
             content = f.read()
             assert content == b"HelloWorld"
-
