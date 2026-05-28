@@ -1,3 +1,4 @@
+import os
 import time
 from types import SimpleNamespace
 from typing import cast
@@ -191,6 +192,136 @@ def test_disable_hupcl_applies_termios_flags(monkeypatch):
     assert calls["fd_set"] == 42
     assert calls["when"] == 0
     assert calls["attrs"][2] & 0x4000 == 0
+
+
+def test_release_blocks_new_connect_until_acquire():
+    """release() should make subsequent connect() block; acquire() releases."""
+    import threading
+
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+        client.release()
+
+        opened = threading.Event()
+        completed = threading.Event()
+
+        def open_stream():
+            with client.stream() as _stream:
+                opened.set()
+            completed.set()
+
+        worker = threading.Thread(target=open_stream, daemon=True)
+        worker.start()
+        # While released, the stream call must block.
+        assert not opened.wait(0.5)
+
+        client.acquire()
+        # After acquire, the stream must open promptly.
+        assert opened.wait(5.0), "stream did not open after acquire()"
+        assert completed.wait(5.0)
+        worker.join(timeout=5.0)
+
+
+def test_release_tears_down_active_stream():
+    """release() should close streams currently held by clients (EOF)."""
+    import threading
+
+    from anyio import BrokenResourceError, EndOfStream
+
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+        with client.stream() as stream:
+            # Trigger release from another thread so this thread can block on receive.
+            threading.Thread(
+                target=lambda: (time.sleep(0.1), client.release()),
+                daemon=True,
+            ).start()
+
+            try:
+                stream.receive()
+            except (EndOfStream, BrokenResourceError):
+                pass
+            else:
+                raise AssertionError("expected EOF after release()")
+
+        # Re-acquire to leave the driver in a clean state.
+        client.acquire()
+
+
+def test_released_context_manager_reacquires_on_exit():
+    """The released() context manager must re-acquire even on exceptions."""
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+
+        with client.released():
+            pass
+        # Acquire should have run — next stream must open.
+        with client.stream() as stream:
+            stream.send(b"x")
+            assert stream.receive().startswith(b"x")
+
+        try:
+            with client.released():
+                raise RuntimeError("boom")
+        except RuntimeError:
+            pass
+
+        # Still re-acquired despite the exception.
+        with client.stream() as stream:
+            stream.send(b"y")
+            assert stream.receive().startswith(b"y")
+
+
+def test_acquire_without_release_is_noop():
+    """acquire() on an already-acquired port should not raise or block."""
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+        client.acquire()  # no-op
+        # Stream still works.
+        with client.stream() as stream:
+            stream.send(b"hi")
+            assert stream.receive().startswith(b"hi")
+
+
+def test_pty_yields_valid_slave_path():
+    """pty() must yield a path that exists and looks like a PTY slave."""
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+        with client.pty() as slave_path:
+            assert slave_path.startswith("/dev/pts/") or slave_path.startswith("/dev/")
+            assert os.path.exists(slave_path)
+
+
+def test_pty_creates_and_removes_symlink(tmp_path):
+    """When symlink_path is given, it should exist while in context, gone after."""
+    symlink = tmp_path / "jmp-tty"
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+        with client.pty(symlink_path=str(symlink)) as slave_path:
+            assert symlink.is_symlink()
+            assert os.readlink(str(symlink)) == slave_path
+        assert not symlink.exists()
+
+
+def test_pty_slave_is_raw_mode():
+    """Bridge should put the slave in raw mode so consumers see a transparent
+    byte pipe (no line discipline, no echo). Verifying termios flags is
+    cheaper and more deterministic than a loopback echo test."""
+    import termios
+
+    with serve(PySerial(url="loop://")) as client:
+        client = cast(PySerialClient, client)
+        with client.pty() as slave_path:
+            fd = os.open(slave_path, os.O_RDWR | os.O_NOCTTY)
+            try:
+                iflag, oflag, _cflag, lflag, *_ = termios.tcgetattr(fd)
+                # Echo and canonical input must be off.
+                assert lflag & termios.ECHO == 0, "ECHO should be cleared"
+                assert lflag & termios.ICANON == 0, "ICANON should be cleared"
+                # Output post-processing off (no LF→CRLF translation).
+                assert oflag & termios.OPOST == 0, "OPOST should be cleared"
+            finally:
+                os.close(fd)
 
 
 def test_disable_hupcl_noop_when_disabled(monkeypatch):
