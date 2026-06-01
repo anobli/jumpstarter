@@ -1,0 +1,41 @@
+{
+  "_comment": "Example manifest for fastboot flashall command (JSON format)",
+  "_note": "Simple flat mapping of partition names to image filenames",
+  "_usage": [
+    "Place this manifest.json in your build output directory",
+    "Flash directly: j fastboot flashall /path/to/build/dir/",
+    "Or create a zip: zip -r bundle.zip manifest.json *.img",
+    "Then flash: j fastboot flashall bundle.zip"
+  ],
+
+  "tiboot3": "tiboot3-am625-beagleplay.bin",
+  "bootloader": "bootloader-am625-beagleplay.img",
+
+  "boot_a": "boot.img",
+  "boot_b": "boot.img",
+
+  "vendor_boot_a": "vendor_boot.img",
+  "vendor_boot_b": "vendor_boot.img",
+
+  "init_boot_a": "init_boot.img",
+  "init_boot_b": "init_boot.img",
+
+  "userdata": "userdata.img",
+
+  "vbmeta_a": "vbmeta.img",
+  "vbmeta_b": "vbmeta.img",
+
+  "vbmeta_vendor_dlkm_a": "vbmeta_vendor_dlkm.img",
+  "vbmeta_vendor_dlkm_b": "vbmeta_vendor_dlkm.img",
+
+  "vbmeta_system_dlkm_a": "vbmeta_system_dlkm.img",
+  "vbmeta_system_dlkm_b": "vbmeta_system_dlkm.img",
+
+  "dtbo_a": "dtbo.img",
+  "dtbo_b": "dtbo.img",
+
+  "persist": "persist.img",
+  "metadata": "metadata.img",
+
+  "super": "super.img"
+}

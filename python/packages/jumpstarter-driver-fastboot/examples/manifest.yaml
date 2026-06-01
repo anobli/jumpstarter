@@ -1,0 +1,54 @@
+# Example manifest for fastboot flashall command
+#
+# Simple flat mapping of partition names to image filenames.
+# All filenames are relative to the directory containing this manifest.
+#
+# Usage:
+#   1. Place this manifest.yaml in your build output directory
+#   2. Flash directly: j fastboot flashall /path/to/build/dir/
+#   3. Or create a zip first: zip -r bundle.zip manifest.yaml *.img
+#      Then flash: j fastboot flashall bundle.zip
+
+# Bootloader partitions
+tiboot3: tiboot3-am625-beagleplay.bin
+bootloader: bootloader-am625-beagleplay.img
+
+# Boot partitions (A/B slots for OTA updates)
+boot_a: boot.img
+boot_b: boot.img
+
+# Vendor boot partitions (A/B slots)
+vendor_boot_a: vendor_boot.img
+vendor_boot_b: vendor_boot.img
+
+# Init boot partitions (A/B slots)
+init_boot_a: init_boot.img
+init_boot_b: init_boot.img
+
+# Userdata partition
+userdata: userdata.img
+
+# VBMeta (Android Verified Boot) partitions (A/B slots)
+vbmeta_a: vbmeta.img
+vbmeta_b: vbmeta.img
+
+# VBMeta vendor DLKM partitions (A/B slots)
+vbmeta_vendor_dlkm_a: vbmeta_vendor_dlkm.img
+vbmeta_vendor_dlkm_b: vbmeta_vendor_dlkm.img
+
+# VBMeta system DLKM partitions (A/B slots)
+vbmeta_system_dlkm_a: vbmeta_system_dlkm.img
+vbmeta_system_dlkm_b: vbmeta_system_dlkm.img
+
+# DTBO (Device Tree Blob Overlay) partitions (A/B slots)
+dtbo_a: dtbo.img
+dtbo_b: dtbo.img
+
+# Persist partition (survives factory reset)
+persist: persist.img
+
+# Metadata partition
+metadata: metadata.img
+
+# Super partition (dynamic partitions: system, vendor, product)
+super: super.img
