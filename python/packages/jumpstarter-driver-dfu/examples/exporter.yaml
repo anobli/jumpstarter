@@ -1,0 +1,51 @@
+apiVersion: jumpstarter.dev/v1alpha1
+kind: ExporterConfig
+metadata:
+  namespace: default
+  name: demo
+endpoint: grpc.jumpstarter.192.168.0.203.nip.io:8082
+token: "<token>"
+export:
+  # Bare-minimum DFU driver — `dfu-util` only, no orchestration.
+  dfu_simple:
+    type: jumpstarter_driver_dfu.driver.Dfu
+
+  # DFU driver wired to power + a boot-strap GPIO so it can put the DUT
+  # into DFU mode on its own via `dfu enter`.
+  dfu:
+    type: jumpstarter_driver_dfu.driver.Dfu
+    children:
+      power:
+        ref: "power"
+      boot_button:
+        ref: "boot_button"
+    config:
+      # Match this specific device after entering DFU mode.
+      vid_pid: "0483:df11"
+
+      # Steps to put the DUT into DFU mode. Each step is one of:
+      #   { call: "<child>.<method>", args: [...] }
+      #   { sleep: <seconds> }
+      #   { log: "<message>" }
+      enter_dfu_sequence:
+        - { log: "Power off and assert boot strap" }
+        - { call: "power.off" }
+        - { call: "boot_button.on" }       # press / assert
+        - { sleep: 0.2 }
+        - { call: "power.on" }             # USB re-enumerates here
+        - { sleep: 1.5 }
+        - { call: "boot_button.off" }      # release
+      enter_dfu_wait: true
+      enter_dfu_timeout: 15.0
+
+  # Children referenced above. Adapt to your hardware.
+  power:
+    type: jumpstarter_driver_yepkit.driver.Ykush
+    config:
+      serial: "YK112233"
+      port: "1"
+  boot_button:
+    type: jumpstarter_driver_gpiod.driver.DigitalOutput
+    config:
+      device: "/dev/gpiochip0"
+      line: 17
