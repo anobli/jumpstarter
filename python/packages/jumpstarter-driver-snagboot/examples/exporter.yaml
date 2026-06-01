@@ -1,0 +1,15 @@
+apiVersion: jumpstarter.dev/v1alpha1
+kind: ExporterConfig
+metadata:
+  namespace: default
+  name: demo
+endpoint: grpc.jumpstarter.192.168.0.203.nip.io:8082
+token: "<token>"
+export:
+  snagboot:
+    type: jumpstarter_driver_snagboot.driver.Snagboot
+    config:
+      # Required for snagrecover. Pick the SoC name snagboot recognises
+      # (e.g. am62x, am335x, stm32mp25, imx8mp, rk3588).
+      soc: am62x
+      # snagrecover_path: /usr/local/bin/snagrecover   # default: snagrecover
