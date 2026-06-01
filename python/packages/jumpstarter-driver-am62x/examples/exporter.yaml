@@ -1,0 +1,36 @@
+apiVersion: jumpstarter.dev/v1alpha1
+kind: ExporterConfig
+metadata:
+  namespace: default
+  name: demo
+endpoint: grpc.jumpstarter.192.168.0.203.nip.io:8082
+token: "<token>"
+export:
+  # SoC driver — auto-applies the AM62x DFU vid_pid and enter_dfu_sequence.
+  am62x:
+    type: jumpstarter_driver_am62x.driver.AM62x
+    children:
+      power: { ref: "power" }
+      boot_button: { ref: "boot_button" }
+    # Optional overrides:
+    # config:
+    #   enter_dfu_timeout: 30.0
+    #   enter_dfu_sequence:
+    #     - { call: "power.off" }
+    #     - { call: "boot_button.on" }
+    #     - { sleep: 0.5 }
+    #     - { call: "power.on" }
+    #     - { sleep: 2.0 }
+    #     - { call: "boot_button.off" }
+
+  # Children referenced above. Adapt to your hardware.
+  power:
+    type: jumpstarter_driver_yepkit.driver.Ykush
+    config:
+      serial: "YK112233"
+      port: "1"
+  boot_button:
+    type: jumpstarter_driver_gpiod.driver.DigitalOutput
+    config:
+      device: "/dev/gpiochip0"
+      line: 17

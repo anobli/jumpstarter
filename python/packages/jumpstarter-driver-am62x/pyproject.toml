@@ -1,0 +1,50 @@
+[project]
+name = "jumpstarter-driver-am62x"
+dynamic = ["version", "urls"]
+description = "TI AM62x SoC driver for Jumpstarter (DFU preset)"
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "Alexandre Bailon", email = "abailon@baylibre.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "anyio>=4.10.0",
+    "click>=8.1.7.2",
+    "jumpstarter",
+    "jumpstarter-driver-composite",
+    "jumpstarter-driver-dfu",
+    "jumpstarter-driver-uboot",
+]
+
+[project.entry-points."jumpstarter.drivers"]
+AM62x = "jumpstarter_driver_am62x.driver:AM62x"
+AM62xDfu = "jumpstarter_driver_am62x.driver:AM62xDfu"
+
+[tool.hatch.version]
+source = "vcs"
+raw-options = { 'root' = '../../../'}
+
+[tool.hatch.metadata.hooks.vcs.urls]
+Homepage = "https://jumpstarter.dev"
+source_archive = "https://github.com/jumpstarter-dev/repo/archive/{commit_hash}.zip"
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report=html --cov-report=xml"
+log_cli = true
+log_cli_level = "INFO"
+testpaths = ["jumpstarter_driver_am62x"]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["hatchling", "hatch-vcs", "hatch-pin-jumpstarter"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.hooks.pin_jumpstarter]
+name = "pin_jumpstarter"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=6.0.0",
+    "pytest>=8.3.3",
+]
