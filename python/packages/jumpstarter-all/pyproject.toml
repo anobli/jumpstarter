@@ -47,6 +47,7 @@ dependencies = [
   "jumpstarter-driver-ustreamer",
   "jumpstarter-driver-vnc",
   "jumpstarter-driver-yepkit",
+  "jumpstarter-driver-zephyr",
   "jumpstarter-imagehash",
   "jumpstarter-kubernetes",
   "jumpstarter-protocol",
