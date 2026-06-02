@@ -61,6 +61,7 @@ members = [
     "jumpstarter-driver-vnc",
     "jumpstarter-driver-xcp",
     "jumpstarter-driver-yepkit",
+    "jumpstarter-driver-zephyr",
     "jumpstarter-example-android-emulator",
     "jumpstarter-example-automotive",
     "jumpstarter-example-soc-pytest",
@@ -2031,6 +2032,7 @@ dependencies = [
     { name = "jumpstarter-driver-ustreamer" },
     { name = "jumpstarter-driver-vnc" },
     { name = "jumpstarter-driver-yepkit" },
+    { name = "jumpstarter-driver-zephyr" },
     { name = "jumpstarter-imagehash" },
     { name = "jumpstarter-kubernetes" },
     { name = "jumpstarter-protocol" },
@@ -2078,6 +2080,7 @@ requires-dist = [
     { name = "jumpstarter-driver-ustreamer", editable = "packages/jumpstarter-driver-ustreamer" },
     { name = "jumpstarter-driver-vnc", editable = "packages/jumpstarter-driver-vnc" },
     { name = "jumpstarter-driver-yepkit", editable = "packages/jumpstarter-driver-yepkit" },
+    { name = "jumpstarter-driver-zephyr", editable = "packages/jumpstarter-driver-zephyr" },
     { name = "jumpstarter-imagehash", editable = "packages/jumpstarter-imagehash" },
     { name = "jumpstarter-kubernetes", editable = "packages/jumpstarter-kubernetes" },
     { name = "jumpstarter-protocol", editable = "packages/jumpstarter-protocol" },
@@ -3667,6 +3670,36 @@ requires-dist = [
     { name = "jumpstarter", editable = "packages/jumpstarter" },
     { name = "jumpstarter-driver-power", editable = "packages/jumpstarter-driver-power" },
     { name = "pyusb", specifier = ">=1.2.1" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.3" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+]
+
+[[package]]
+name = "jumpstarter-driver-zephyr"
+source = { editable = "packages/jumpstarter-driver-zephyr" }
+dependencies = [
+    { name = "anyio" },
+    { name = "click" },
+    { name = "jumpstarter" },
+    { name = "jumpstarter-driver-opendal" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = ">=4.10.0" },
+    { name = "click", specifier = ">=8.1.7.2" },
+    { name = "jumpstarter", editable = "packages/jumpstarter" },
+    { name = "jumpstarter-driver-opendal", editable = "packages/jumpstarter-driver-opendal" },
 ]
 
 [package.metadata.requires-dev]
