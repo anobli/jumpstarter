@@ -129,3 +129,39 @@ def test_missing_artifacts_fails_fast(tmp_path):
     with serve(Zephyr(flash_command="true", flash_timeout=0)) as client:
         with pytest.raises(FileNotFoundError):
             _flash(client, empty)
+
+
+def _argv(**kw) -> list[str]:
+    """Build a twister argv via the pure helper, no RPC connection needed."""
+    client = ZephyrClient.__new__(ZephyrClient)
+    return client._twister_argv("plat", "/tty", ["root"], **kw)
+
+
+def test_pytest_args_emitted_as_single_eq_token():
+    """Each pytest arg becomes one --pytest-args=<value> token, so a value that
+    starts with a dash survives twister's argparse instead of being misread as a
+    twister option (the AbsoluteLinkError-adjacent `expected one argument` bug)."""
+    argv = _argv(pytest_args=["--ot-hardware-map=/srv/map.yml"])
+    assert "--pytest-args=--ot-hardware-map=/srv/map.yml" in argv
+    # The value must NOT land as its own token next to a bare --pytest-args.
+    assert "--pytest-args" not in argv
+    assert "--ot-hardware-map=/srv/map.yml" not in argv
+
+
+def test_multiple_pytest_args_each_get_their_own_token():
+    argv = _argv(pytest_args=["-k", "my_test"])
+    assert argv.count("--pytest-args=-k") == 1
+    assert argv.count("--pytest-args=my_test") == 1
+
+
+def test_twister_args_and_pytest_args_coexist():
+    """Verbatim twister args precede the forwarded pytest args."""
+    argv = _argv(
+        twister_args=["-x", "my_fixture"],
+        pytest_args=["--ot-hardware-map=/srv/map.yml"],
+    )
+    assert argv[-3:] == ["-x", "my_fixture", "--pytest-args=--ot-hardware-map=/srv/map.yml"]
+
+
+def test_no_pytest_args_adds_nothing():
+    assert not any(a.startswith("--pytest-args") for a in _argv())

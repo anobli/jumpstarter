@@ -159,6 +159,7 @@ class ZephyrClient(DriverClient):
         tty: str,
         test_roots: list[str],
         twister_args: list[str] | None = None,
+        pytest_args: list[str] | None = None,
     ) -> list[str]:
         """Build the twister command line.
 
@@ -168,6 +169,10 @@ class ZephyrClient(DriverClient):
             test_roots: Test root paths (each passed via ``-T``).
             twister_args: Extra arguments appended verbatim to the twister
                 command line (e.g. ``["-x", "my-fixture"]``).
+            pytest_args: Arguments to forward to pytest. Each is emitted as a
+                single ``--pytest-args=<value>`` token so values that begin
+                with a dash (e.g. ``--ot-hardware-map=...``) survive twister's
+                argparse instead of being misread as twister options.
         """
         argv = [
             "west",
@@ -184,6 +189,8 @@ class ZephyrClient(DriverClient):
         for test_path in test_roots:
             argv += ["-T", test_path]
         argv += twister_args or []
+        for pytest_arg in pytest_args or []:
+            argv.append(f"--pytest-args={pytest_arg}")
         return argv
 
     def _run_twister(self, argv: list[str], twister_out) -> int:
@@ -199,6 +206,7 @@ class ZephyrClient(DriverClient):
         twister_out: str,
         test_roots: list[str],
         twister_args: list[str] | None = None,
+        pytest_args: list[str] | None = None,
     ) -> None:
         """Run twister to test Zephyr firmware on the exporter.
 
@@ -212,6 +220,8 @@ class ZephyrClient(DriverClient):
             test_roots: One or more test root paths, passed to twister via ``-T``.
             twister_args: Extra arguments appended verbatim to the twister command
                 line.
+            pytest_args: Arguments to forward to pytest, each emitted as a
+                ``--pytest-args=<value>`` token.
         """
 
         serials = self.get_serial_clients()
@@ -222,7 +232,7 @@ class ZephyrClient(DriverClient):
             raise RuntimeError("Multiple PySerialClient children support is not implemented yet")
 
         tty = os.path.join(tempfile.gettempdir(), f"jmp-tty.{os.getpid()}")
-        argv = self._twister_argv(platform, tty, test_roots, twister_args)
+        argv = self._twister_argv(platform, tty, test_roots, twister_args, pytest_args)
 
         with serials[0].pty(symlink_path=tty):
             rc = self._run_twister(argv, twister_out)
@@ -276,12 +286,23 @@ class ZephyrClient(DriverClient):
             callback=_split_comma,
             help="Extra arguments appended to the twister command line, "
             'comma-separated and repeatable (e.g. --twister-args "-x,my-fixture" '
-            '--twister-args "--pytest-args,--foo=bar").',
+            '--twister-args "--pytest-args=--foo=bar"). An option whose value '
+            "itself starts with a dash must be written as one --opt=value field, "
+            "not split across a comma, or twister's argparse rejects it. To "
+            "forward arguments to pytest, prefer --pytest-args.",
         )
-        def twister(platform, twister_out, test_roots, twister_args):
+        @click.option(
+            "--pytest-args",
+            "pytest_args",
+            multiple=True,
+            help="Argument to forward to pytest (repeatable). Each value is "
+            "passed to twister as --pytest-args=VALUE, so dash-prefixed values "
+            "work directly, e.g. --pytest-args=--ot-hardware-map=/path/map.yml.",
+        )
+        def twister(platform, twister_out, test_roots, twister_args, pytest_args):
             """Run twister to test Zephyr firmware on the exporter."""
             self.logger.info("Running twister...")
-            self.twister(platform, twister_out, test_roots, twister_args)
+            self.twister(platform, twister_out, test_roots, twister_args, list(pytest_args))
 
         return base
 
@@ -292,9 +313,15 @@ def _split_comma(ctx, param, value: tuple[str, ...]) -> list[str]:
     With ``multiple=True`` click passes ``value`` as a tuple holding one string
     per option occurrence. Each is split on commas and the pieces are
     concatenated in order, so
-    ``--twister-args "-x,fixture" --twister-args "--pytest-args,--foo=bar"``
-    yields ``["-x", "fixture", "--pytest-args", "--foo=bar"]``. Empty fields are
+    ``--twister-args "-x,fixture" --twister-args "--pytest-args=--foo=bar"``
+    yields ``["-x", "fixture", "--pytest-args=--foo=bar"]``. Empty fields are
     dropped so a trailing comma or empty value contributes no arguments.
+
+    Each comma-separated field becomes one argv token verbatim. An option whose
+    value starts with a dash (e.g. pytest's ``--ot-hardware-map=...``) must be
+    written as a single ``--opt=value`` field rather than split across a comma
+    (``--opt,value``): otherwise it lands as two tokens and twister's argparse
+    refuses to treat the dash-prefixed second token as ``--opt``'s argument.
     """
     result: list[str] = []
     for occurrence in value:
